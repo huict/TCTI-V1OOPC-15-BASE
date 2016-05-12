@@ -1,10 +1,11 @@
 # ===========================================================================
 # 
 # BMPTK's Make Editor Files:
-# create the Codelite and PSPad files for a set of projects
+# create the Codelite files for a set of projects,
+# which can be native or bmptk
 #
 # (c) Wouter van Ooijen (wouter@voti.nl)
-# 2015-12-18 version 0.1 work-in-progress
+# 2016-04-15 version 1.0 work-in-progress
 # license: Boost Software License - Version 1.0
 #
 # ===========================================================================
@@ -12,16 +13,10 @@
 # Known limitations
 # 
 # tested only on Windows
-# PSPad projects are always for bmptk
 # works only for one level of subdirectories
 #
 # ===========================================================================
-#
-# ToDo list
-#
-# put other files than main in the open-files list
-#
-# ===========================================================================
+
 
 from __future__ import print_function
 import sys, os, argparse, shutil
@@ -37,6 +32,12 @@ def remove_by_extension( dir, ext ):
    for file in files:
      if file.endswith( ext ):
         os.remove( os.path.join( dir, file ))   
+
+def remove( dir, file ):
+   try:
+      os.remove( os.path.join( dir, file ))   
+   except:
+      pass   
 
 class projectdir:
    "a single project directory"
@@ -54,28 +55,20 @@ class projectdir:
             self.is_project = 1
             self.main = file            
       
-   def make_pspad( self, bmptk, pspad ):
-      #print( os.path.join( self.path, self.subdir, pspad ) )
-      file_from_text(
-         os.path.join( self.path, self.subdir, pspad ),
-         pspad_file( bmptk, self.name, self.main, self.files )
-      );
-      
-   def make_codelite( self, bmptk, codelite, workspace ):
+   def make_codelite( self, codelite, workspace ):
       file_from_text(
          os.path.join( self.path, self.subdir, codelite ),
-         codelite_project_file( bmptk, self.name, self.main, self.files )
+         codelite_project_file( self.name, self.main, self.files )
       );
       if 0: file_from_text(
          os.path.join( self.path, self.subdir, workspace ),
          codelite_workspace_file( [ self.name ], codelite, 1 )
       );         
       
-   def make_files( self, bmptk, pspad, codelite, workspace ):
+   def make_files( self, codelite, workspace ):
       if 0: print( "create project %s in %s" % ( self.name, self.subdir ) ) 
       print( "create project %s " % ( self.name ) )         
-      if 0:self.make_pspad( bmptk, pspad )
-      self.make_codelite( bmptk, codelite, workspace )
+      self.make_codelite( codelite, workspace )
       
    def cleanup( self ):
       dir = self.subdir
@@ -85,9 +78,15 @@ class projectdir:
       shutil.rmtree( os.path.join( dir, ".clang" ), ignore_errors = True )  
       shutil.rmtree( os.path.join( dir, ".codelite" ), ignore_errors = True )  
       
+      remove_by_extension( dir, ".o" )
+      remove_by_extension( dir, ".bin" )
+      remove_by_extension( dir, ".elf" )
+      remove_by_extension( dir, ".ld" )
+      remove_by_extension( dir, ".map" )
       remove_by_extension( dir, ".ppr" )
       remove_by_extension( dir, ".workspace" )
       remove_by_extension( dir, ".project" )
+      remove( dir, "bmptk_fixed_size_stack.c" )
       
       files = os.listdir( dir )
       for file in files:
@@ -104,19 +103,16 @@ class projectdir:
 def arguments_parser():
    parser = argparse.ArgumentParser( 
       description = \
-      'Create the editor files for CodeLite and PSPad for the '
-      'projects in a set of subdirectories. '
+      'Create the editor files for CodeLite for the '
+      'projects in a set of subdirectories, '
+      'which can be native or bmptk '
+      '(identified by the presence of a Makefile). '
    )       
    parser.add_argument(
       '-root', 
       default = '.',      
       help = 'the directory that contains the subdirectory projects. '
              'default: the current direcory.' )
-   parser.add_argument(
-      '-pspad_project', 
-      default = '__pspad.ppr',      
-      help = 'the name of the PSPad project file created in each '
-             'project directory.' )
    parser.add_argument(
       '-codelite_project', 
       default = '_codelite.project',      
@@ -127,11 +123,7 @@ def arguments_parser():
       default = '__codelite.workspace',      
       help = 'the name of the CodeLite workspace file created in each '
              'project directory and in the root directory.' )
-   parser.add_argument(
-      '-bmptk', 
-      action = 'store_true',
-      help   = 'create editor files that invoke bmptk. '
-               'default: create the native editor files. ' )      
+ 
    return parser
    
 def entries( path ):
@@ -140,10 +132,8 @@ def entries( path ):
    except:
       return []         
 
-def create_files( 
-   bmptk, 
+def create_files(  
    root, 
-   pspad, 
    codelite_project, 
    codelite_workspace 
 ):
@@ -161,7 +151,7 @@ def create_files(
    for project in projects:
       if project.is_project:
          project.cleanup();
-         project.make_files( bmptk, pspad, codelite_project, codelite_workspace )
+         project.make_files( codelite_project, codelite_workspace )
          names.append( project.name )
    file_from_text(
       os.path.join( root, codelite_workspace ),
@@ -171,64 +161,12 @@ def create_files(
 def run():
    parser = arguments_parser()
    results = parser.parse_args()
-   create_files( 
-      results.bmptk, 
+   create_files(  
       results.root, 
-      results.pspad_project,
       results.codelite_project,
       results.codelite_workspace
    )
-
-# =========================================================================== 
-
-def pspad_file( bmptk, name, main, files ):
-   s = pspad_template()
-   s = s.replace( "%%MAIN%%", main )
-   return s
-
-def pspad_template():
-   return """
-[Config]
-Relative path=1
-Compilator.FileName=bmptk-build.bat
-Compilator.PSPar=
-Compilator.Log=
-Compilator.Run=
-Compilator.DefaultDir=
-Compilator.SaveAll=1
-Compilator.Capture=1
-Compilator.ParsLog=%F:%L:*
-Compilator.HideOutput=1
-Prog1=Clean,cmd /C "bmptk-make clean "
-Prog2=Run,cmd /C "bmptk-make run "
-Prog3=
-Prog4=
-Prog5=
-DefaultDir=
-DefaultCPIndex=0
-LogtoEnd=1
-DontOpen=0
-FileFormat=0
-DocumentRoot=
-HTServer=
-[Project tree]
-Project
-	+Files
-		-includes
-		+compile
-			%%MAIN%%
-		+others
-			Makefile
-[Open project files]
-0=main.cpp
-1=Makefile
-[Selected Project Files]
-Main=
-Selected=%%main%%
-[%%main%%]
-TopLine=1
-Caret=1,1
-"""
+   
 
 # =========================================================================== 
 
@@ -238,9 +176,10 @@ def add_to_edit_files( file ):
    if file.find( ".hpp" ) >= 0: return 1
    return 0
 
-def codelite_project_file( bmptk, name, main, files ):
-   # print( files )
-   if bmptk:
+def codelite_project_file( name, main, files ):
+   print( files )
+   if 'Makefile' in files:
+      print( "bmptk" )
       s = codelite_project_template_bmptk()
    else:
       s = codelite_project_template_mingw()      
@@ -418,7 +357,7 @@ def codelite_project_template_mingw():
       <Compiler Options="-g;-O0;-std=c++11" C_Options="-g;-O0;-Wall" Assembler="" Required="yes" PreCompiledHeader="" PCHInCommandLine="no" PCHFlags="" PCHFlagsPolicy="0">
         <IncludePath Value=".;../Catch/include"/>
       </Compiler>
-      <Linker Options="-lgdi32" Required="yes"/>
+      <Linker Options="-lgdi32 -static-libgcc -static-libstdc++ " Required="yes"/>
       <ResourceCompiler Options="" Required="no"/>
       <General OutputFile="$(IntermediateDirectory)/$(ProjectName)" IntermediateDirectory="./Debug" Command="./$(ProjectName)" CommandArguments="" UseSeparateDebugArgs="no" DebugArguments="" WorkingDirectory="$(IntermediateDirectory)" PauseExecWhenProcTerminates="yes" IsGUIProgram="no" IsEnabled="yes"/>
       <Environment EnvVarSetName="&lt;Use Defaults&gt;" DbgSetName="&lt;Use Defaults&gt;">
